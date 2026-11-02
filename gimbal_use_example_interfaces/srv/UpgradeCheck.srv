@@ -1,0 +1,15 @@
+# One-shot upgrade readiness check for the gimbal firmware.
+#
+# A service is the right fit here: the operator asks once, the gimbal runs its
+# checks and answers once with "can upgrade / cannot upgrade".
+string current_version
+string target_version
+# Bypass the non-safety checks (battery / temperature / idle). Version checks
+# are always enforced.
+bool force
+---
+bool can_upgrade
+# Human-readable explanation, shown to the operator either way.
+string reason
+# Rough install time, valid when can_upgrade is true.
+int32 estimated_duration_sec

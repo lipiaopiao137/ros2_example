@@ -1,0 +1,7 @@
+# Example service used by the service demo.
+# Everything above the '---' is the request, everything below it is the
+# response. A service exchange is exactly one request and one response.
+int64 a
+int64 b
+---
+int64 sum

@@ -1,0 +1,12 @@
+# Ask the gimbal for its identity and firmware status.
+#
+# The gimbal compares its installed firmware with the version the aircraft
+# expects and decides whether an upgrade is required. The auto-flight planner
+# calls this before every mission.
+---
+string model
+string serial
+string firmware_version
+string required_version
+bool upgrade_required
+string reason

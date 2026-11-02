@@ -1,0 +1,25 @@
+# Automatic flight mission: take off, visit every waypoint in order, then land.
+#
+# goal
+# Climb altitude above the takeoff point, in meters.
+float64 takeoff_altitude_m
+# Horizontal waypoints in the map frame (x, y, yaw in radians).
+geometry_msgs/Pose2D[] waypoints
+# Cruise speed in m/s; <= 0 means "use the server default".
+float64 max_speed_mps
+---
+# result
+bool success
+string message
+uint32 waypoints_completed
+float64 distance_flown_m
+float64 duration_s
+---
+# feedback
+# PREFLIGHT / TAKEOFF / CRUISE / LAND / IDLE
+string state
+uint32 current_waypoint
+uint32 total_waypoints
+geometry_msgs/PoseStamped current_pose
+# Distance left along the remaining waypoints, in meters.
+float64 distance_remaining_m

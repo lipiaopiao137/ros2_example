@@ -4,6 +4,7 @@ ROS 2 Humble 下 **topic / service / action** 三种通信机制的可运行示�
 
 - `ros2_use_example*`：抽象的最小案例（消息 → 求和 → Fibonacci），用来理解机制本身。
 - `gimbal_use_example*`：贴近业务的最小案例（云台 pose 广播、升级前检查、yaw 转动控制）。
+- `auto_flight_example*`：完整工程，把 topic / service / action 串成一条自动飞行链路。
 
 ## 目录结构
 
@@ -20,11 +21,21 @@ ros2_use_example/
 │   ├── msg/GimbalPose.msg              # yaw/pitch/roll + 角速度（度）
 │   ├── srv/UpgradeCheck.srv            # 版本 -> 能否升级 + 原因
 │   └── action/GimbalMove.action        # 相对 yaw 角度 -> 反馈/结果
-└── gimbal_use_example/                 # 云台示例节点 + launch
-    ├── src/gimbal_pose_{publisher,subscriber}.cpp
-    ├── src/upgrade_check_{server,client}.cpp
-    ├── src/gimbal_move_{server,client}.cpp
-    └── launch/{gimbal_pose,upgrade_check,gimbal_move}_demo.launch.py
+├── gimbal_use_example/                 # 云台示例节点 + launch
+│   ├── src/gimbal_pose_{publisher,subscriber}.cpp
+│   ├── src/upgrade_check_{server,client}.cpp
+│   ├── src/gimbal_move_{server,client}.cpp
+│   └── launch/{gimbal_pose,upgrade_check,gimbal_move}_demo.launch.py
+├── auto_flight_interfaces/             # 自动飞行接口
+│   ├── srv/GetGimbalInfo.srv           # 云台型号/版本/是否需要升级
+│   ├── action/AutoFlight.action        # 起飞 - 航点 - 降落
+│   └── msg/FlightStatus.msg            # 飞行状态广播
+└── auto_flight_example/                # 完整工程
+    ├── src/drone_sim.cpp               # 发布 pose/imu/odom，接收速度指令
+    ├── src/gimbal_manager.cpp          # /gimbal/get_info 服务
+    ├── src/auto_flight_node.cpp        # action 服务端 + topic + service 客户端
+    ├── src/auto_flight_client.cpp      # 任务 CLI
+    └── launch/auto_flight_demo.launch.py
 ```
 
 ## 构建
@@ -36,7 +47,7 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-接口包与节点包之间有依赖，四个包一起构建即可；之后新开终端也要先 source `/opt/ros/humble/setup.bash`，
+接口包与节点包之间有依赖，所有包一起构建即可；之后新开终端也要先 source `/opt/ros/humble/setup.bash`，
 再 source 本目录的 `install/setup.bash`。
 
 ## 三种机制对比
@@ -363,6 +374,85 @@ ros2 action send_goal /gimbal_move gimbal_use_example_interfaces/action/GimbalMo
 
 ---
 
+## 5. 完整工程：自动飞行
+
+`auto_flight_example` 把三种机制串成一条自动飞行链路，自包含、不依赖 PX4 / Webots / 真机：
+
+```text
+gimbal_manager  ──/gimbal/get_info (service)──────────▶ auto_flight_node
+drone_sim       ──/drone/{pose,imu,odom} (topic)─────▶ auto_flight_node
+drone_sim       ◀─/drone/cmd_vel (topic)────────────── auto_flight_node
+auto_flight_node──/auto_flight/status (topic)────────▶ 地面站 / 日志
+auto_flight_client ──/auto_flight/execute (action)───▶ auto_flight_node
+```
+
+| 接口 | 类型 | 说明 |
+| --- | --- | --- |
+| `/gimbal/get_info` | `GetGimbalInfo`（service） | 返回型号、序列号、固件版本、要求版本，以及 `upgrade_required` + 原因 |
+| `/auto_flight/execute` | `AutoFlight`（action） | 目标：起飞高度 + 航点；反馈：状态/当前航点/剩余距离；结果：成功、航点数、里程、耗时 |
+| `/auto_flight/preflight` | `std_srvs/Trigger`（service） | 起飞前自检：传感器、姿态、云台固件 |
+| `/auto_flight/status` | `FlightStatus`（topic） | 2 Hz 广播：状态、云台版本、是否需升级、传感器健康、航点进度 |
+
+| 话题 | 类型 | 方向 |
+| --- | --- | --- |
+| `/drone/pose` | `geometry_msgs/PoseStamped` | 仿真 → 规划器 |
+| `/drone/imu` | `sensor_msgs/Imu` | 仿真 → 规划器 |
+| `/drone/odom` | `nav_msgs/Odometry` | 仿真 → 规划器 |
+| `/drone/cmd_vel` | `geometry_msgs/Twist` | 规划器 → 仿真 |
+
+```bash
+# 一键启动（仿真 + 云台 + 规划器 + 一个方形任务）
+ros2 launch auto_flight_example auto_flight_demo.launch.py
+
+# 或手动分进程
+ros2 run auto_flight_example drone_sim
+ros2 run auto_flight_example gimbal_manager
+ros2 run auto_flight_example auto_flight_node
+ros2 run auto_flight_example auto_flight_client 3 5   # 起飞高度 3 m，方形边长 5 m
+```
+
+预期输出：
+
+```text
+[auto_flight_node]: Preflight passed: gimbal Z6 Z6-0001, firmware 1.2.0
+[auto_flight_client]: Mission accepted
+[auto_flight_client]: Feedback: TAKEOFF wp 0/4 remaining 0.0 m
+[auto_flight_client]: Feedback: CRUISE wp 1/4 remaining 19.1 m
+...
+[auto_flight_client]: Feedback: LAND wp 4/4 remaining 0.0 m
+[auto_flight_client]: Mission succeeded: 4/4 waypoints, 18.8 m flown in 18.8 s
+```
+
+观察运行状态：
+
+```bash
+ros2 topic echo /auto_flight/status --once
+ros2 topic hz /drone/pose
+ros2 service call /gimbal/get_info auto_flight_interfaces/srv/GetGimbalInfo "{}"
+ros2 service call /auto_flight/preflight std_srvs/srv/Trigger "{}"
+ros2 action list
+```
+
+异常与边界场景（均已实测）：
+
+| 场景 | 操作 | 结果 |
+| --- | --- | --- |
+| 云台固件落后 | `firmware_version:=1.0.0` 启动 | preflight 返回 NOT ready；mission 直接 abort，原因写明需升级 |
+| 旧固件放行 | `ros2 param set /auto_flight_node require_gimbal_up_to_date false` | 任务正常执行 |
+| 传感器缺失 | 不启动 `drone_sim` | preflight 报 pose/imu/odom stale，mission abort |
+| 中途取消 | `auto_flight_client 3 5 6` | 原地降落，action 返回 CANCELED，退出码 2 |
+| 目标非法 | 高度 100 m 或航点半径 60 m | action 直接 REJECT（超高度限制 / 超出地理围栏） |
+
+设计要点：
+
+- **升级判断在云台侧**：`GetGimbalInfo` 自己比较 `firmware_version` 与 `required_version`，飞行器只按 `upgrade_required` 决定放行策略。
+- **服务轮询 + 缓存**：`auto_flight_node` 以 2 Hz 轮询云台信息并缓存，`preflight` 服务因此不会阻塞 executor；任务线程等待缓存变新鲜即可。
+- **任务互斥**：同一时刻只允许一个 mission（`mission_active`），第二个目标直接 REJECT。
+- **取消即降落**：取消后先原地降落，再返回 `CANCELED`，不会把飞机悬停在空中。
+- **仿真与真机的边界**：仿真为运动学 ENU（z 向上），与 PX4 的 NED 不同；接真机时替换 `drone_sim`，并按 NED 调整速度符号和话题（`/fmu/in/...`）。
+
+---
+
 ## 自定义接口
 
 通用示例在 `ros2_use_example_interfaces`，云台示例在 `gimbal_use_example_interfaces`：
@@ -377,6 +467,7 @@ action/X.action # 三段：goal --- result --- feedback
 | --- | --- |
 | `ros2_use_example_interfaces` | `ExampleMessage` / `ExampleService` / `ExampleAction` |
 | `gimbal_use_example_interfaces` | `GimbalPose` / `UpgradeCheck` / `GimbalMove` |
+| `auto_flight_interfaces` | `FlightStatus` / `GetGimbalInfo` / `AutoFlight` |
 
 查看生成后的完整定义：
 

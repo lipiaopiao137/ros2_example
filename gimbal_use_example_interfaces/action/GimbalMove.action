@@ -1,0 +1,18 @@
+# Rotate the gimbal yaw axis by a relative angle.
+#
+# An action fits because moving is a long-running, observable, cancellable
+# task: the client sends the goal, the server streams the current angle while
+# the gimbal moves, and finally reports success or cancellation.
+float64 delta_yaw_deg
+# Rotation speed in deg/s. <= 0 means "use the server default".
+float64 speed_dps
+---
+# Result: delivered once when the motion ends.
+bool success
+float64 final_yaw_deg
+string message
+---
+# Feedback: streamed while the gimbal is moving.
+float64 current_yaw_deg
+# Progress from 0.0 to 1.0.
+float64 progress

@@ -1,0 +1,14 @@
+# Example action used by the action demo.
+#
+# Three sections separated by '---':
+#   goal     : sent once by the client when starting the task
+#   result   : delivered once when the task finishes
+#   feedback : streamed zero or more times while the task runs
+#
+# Here the server computes the first `order` numbers of the Fibonacci
+# sequence, streaming the partial sequence as feedback.
+int32 order
+---
+int32[] sequence
+---
+int32[] partial_sequence
