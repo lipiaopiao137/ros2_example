@@ -22,11 +22,9 @@
 
 using GetGimbalInfo = auto_flight_interfaces::srv::GetGimbalInfo;
 
-namespace
-{
+namespace {
 // Compare dotted numeric versions. Returns <0, 0, >0 like strcmp.
-int compare_versions(const std::string & a, const std::string & b)
-{
+int compare_versions(const std::string& a, const std::string& b) {
   std::istringstream sa(a);
   std::istringstream sb(b);
   while (true) {
@@ -46,35 +44,25 @@ int compare_versions(const std::string & a, const std::string & b)
 }
 }  // namespace
 
-class GimbalManager : public rclcpp::Node
-{
-public:
-  GimbalManager()
-  : Node("gimbal_manager")
-  {
+class GimbalManager : public rclcpp::Node {
+ public:
+  GimbalManager() : Node("gimbal_manager") {
     this->declare_parameter<std::string>("model", "Z6");
     this->declare_parameter<std::string>("serial", "Z6-0001");
     this->declare_parameter<std::string>("firmware_version", "1.2.0");
     this->declare_parameter<std::string>("required_version", "1.1.0");
 
     service_ = this->create_service<GetGimbalInfo>(
-      "gimbal/get_info",
-      std::bind(
-        &GimbalManager::handle_info, this,
-        std::placeholders::_1, std::placeholders::_2));
+        "gimbal/get_info", std::bind(&GimbalManager::handle_info, this, std::placeholders::_1, std::placeholders::_2));
 
-    RCLCPP_INFO(
-      this->get_logger(),
-      "Serving /gimbal/get_info (firmware %s, required %s)",
-      this->get_parameter("firmware_version").as_string().c_str(),
-      this->get_parameter("required_version").as_string().c_str());
+    RCLCPP_INFO(this->get_logger(), "Serving /gimbal/get_info (firmware %s, required %s)",
+                this->get_parameter("firmware_version").as_string().c_str(),
+                this->get_parameter("required_version").as_string().c_str());
   }
 
-private:
-  void handle_info(
-    const std::shared_ptr<GetGimbalInfo::Request> request,
-    std::shared_ptr<GetGimbalInfo::Response> response)
-  {
+ private:
+  void handle_info(const std::shared_ptr<GetGimbalInfo::Request> request,
+                   std::shared_ptr<GetGimbalInfo::Response> response) {
     (void)request;
 
     // Read parameters per call so `ros2 param set` changes the answer live.
@@ -93,17 +81,15 @@ private:
       response->reason = "firmware " + firmware + " is up to date";
     }
 
-    RCLCPP_INFO(
-      this->get_logger(), "Info request: %s %s, firmware %s, upgrade_required=%s (%s)",
-      response->model.c_str(), response->serial.c_str(), firmware.c_str(),
-      response->upgrade_required ? "true" : "false", response->reason.c_str());
+    RCLCPP_INFO(this->get_logger(), "Info request: %s %s, firmware %s, upgrade_required=%s (%s)",
+                response->model.c_str(), response->serial.c_str(), firmware.c_str(),
+                response->upgrade_required ? "true" : "false", response->reason.c_str());
   }
 
   rclcpp::Service<GetGimbalInfo>::SharedPtr service_;
 };
 
-int main(int argc, char * argv[])
-{
+int main(int argc, char* argv[]) {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<GimbalManager>());
   rclcpp::shutdown();

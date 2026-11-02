@@ -14,6 +14,8 @@ find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(auto_flight_interfaces REQUIRED)
 
 set(demo_nodes
@@ -33,6 +35,8 @@ foreach(node ${demo_nodes})
     sensor_msgs
     std_msgs
     std_srvs
+    tf2_ros
+    visualization_msgs
     auto_flight_interfaces
   )
 endforeach()
@@ -41,7 +45,7 @@ install(TARGETS ${demo_nodes}
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY launch
+install(DIRECTORY launch rviz
   DESTINATION share/${PROJECT_NAME}
 )
 

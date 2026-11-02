@@ -31,10 +31,11 @@ ros2_use_example/
 │   ├── action/AutoFlight.action        # 起飞 - 航点 - 降落
 │   └── msg/FlightStatus.msg            # 飞行状态广播
 └── auto_flight_example/                # 完整工程
-    ├── src/drone_sim.cpp               # 发布 pose/imu/odom，接收速度指令
+    ├── src/drone_sim.cpp               # 发布 pose/imu/odom/轨迹 Path + TF，接收速度指令
     ├── src/gimbal_manager.cpp          # /gimbal/get_info 服务
     ├── src/auto_flight_node.cpp        # action 服务端 + topic + service 客户端
     ├── src/auto_flight_client.cpp      # 任务 CLI
+    ├── rviz/auto_flight.rviz           # RViz2 显示配置（轨迹/位姿/航点）
     └── launch/auto_flight_demo.launch.py
 ```
 
@@ -384,6 +385,8 @@ drone_sim       ──/drone/{pose,imu,odom} (topic)─────▶ auto_flig
 drone_sim       ◀─/drone/cmd_vel (topic)────────────── auto_flight_node
 auto_flight_node──/auto_flight/status (topic)────────▶ 地面站 / 日志
 auto_flight_client ──/auto_flight/execute (action)───▶ auto_flight_node
+drone_sim       ──/drone/trail, /tf (topic)──────────▶ rviz2
+auto_flight_node──/auto_flight/waypoints (topic)─────▶ rviz2
 ```
 
 | 接口 | 类型 | 说明 |
@@ -399,6 +402,9 @@ auto_flight_client ──/auto_flight/execute (action)───▶ auto_flight_n
 | `/drone/imu` | `sensor_msgs/Imu` | 仿真 → 规划器 |
 | `/drone/odom` | `nav_msgs/Odometry` | 仿真 → 规划器 |
 | `/drone/cmd_vel` | `geometry_msgs/Twist` | 规划器 → 仿真 |
+| `/drone/trail` | `nav_msgs/Path` | 仿真 → RViz（累积飞行轨迹） |
+| `/auto_flight/waypoints` | `visualization_msgs/MarkerArray` | 规划器 → RViz（航线 + 航点标签） |
+| `/tf` | `tf2_msgs/TFMessage` | 仿真 → RViz（`map → odom → base_link`） |
 
 ```bash
 # 一键启动（仿真 + 云台 + 规划器 + 一个方形任务）
@@ -432,6 +438,36 @@ ros2 service call /gimbal/get_info auto_flight_interfaces/srv/GetGimbalInfo "{}"
 ros2 service call /auto_flight/preflight std_srvs/srv/Trigger "{}"
 ros2 action list
 ```
+
+### RViz2 可视化
+
+`auto_flight_demo.launch.py` 默认同时启动 `rviz2` 并加载 `rviz/auto_flight.rviz`：
+
+```bash
+# 带 RViz（默认）
+ros2 launch auto_flight_example auto_flight_demo.launch.py
+
+# 无界面运行
+ros2 launch auto_flight_example auto_flight_demo.launch.py use_rviz:=false
+
+# 手动分进程时单独开 RViz
+ros2 run rviz2 rviz2 -d $(ros2 pkg prefix auto_flight_example)/share/auto_flight_example/rviz/auto_flight.rviz
+```
+
+| 显示项 | 话题 | 内容 |
+| --- | --- | --- |
+| Waypoint plan | `/auto_flight/waypoints` | 规划航线折线 + 航点球 + `P1…Pn` 标签 |
+| Flight trail | `/drone/trail` | 实际飞行轨迹（绿色折线） |
+| Drone pose | `/drone/pose` | 当前位姿箭头 |
+| Odometry | `/drone/odom` | odom 位姿，保留最近 100 帧箭头 |
+| TF | `/tf` | `map → odom → base_link` |
+
+说明：
+
+- 固定坐标系 `map`（ENU、z 向上）。仿真里 `map → odom` 是单位变换，`odom → base_link` 才是真实位姿。
+- 轨迹由 `drone_sim` 累积：相邻点距离 ≥ 2 cm 才记录，默认最多 20000 点、以 2 Hz 发布（`trail_rate_hz` / `trail_max_points`）。
+- 航点 MarkerArray 用 transient local QoS，RViz 晚于任务启动也能收到当前航线；每次接受新目标会先 `DELETEALL` 清掉上一轮。
+- Humble 的 `rviz_default_plugins` 没有 IMU 显示插件，IMU 数据用 `ros2 topic echo /drone/imu --once` 查看；姿态由 `Drone pose` / `TF` 反映。
 
 异常与边界场景（均已实测）：
 

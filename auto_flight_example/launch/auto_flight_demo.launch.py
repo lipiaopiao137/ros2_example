@@ -1,26 +1,40 @@
 """Start the complete auto-flight demo.
 
 Brings up the vehicle simulator, the gimbal manager and the auto-flight node,
-then sends one square mission from the CLI client.
+opens RViz2 on the flight path, then sends one square mission from the CLI
+client.
 
 Try an outdated gimbal firmware to see preflight refuse the mission:
 
     ros2 launch auto_flight_example auto_flight_demo.launch.py firmware_version:=1.0.0
+
+Add use_rviz:=false to run headless.
 """
 
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, TimerAction
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    rviz_config = os.path.join(
+        get_package_share_directory("auto_flight_example"),
+        "rviz",
+        "auto_flight.rviz",
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument("firmware_version", default_value="1.2.0"),
         DeclareLaunchArgument("required_version", default_value="1.1.0"),
         DeclareLaunchArgument("altitude", default_value="3.0"),
         DeclareLaunchArgument("radius", default_value="5.0"),
         DeclareLaunchArgument("cancel_after", default_value="0.0"),
+        DeclareLaunchArgument("use_rviz", default_value="true"),
         Node(
             package="auto_flight_example",
             executable="drone_sim",
@@ -56,5 +70,13 @@ def generate_launch_description():
                     ],
                 ),
             ],
+        ),
+        Node(
+            package="rviz2",
+            executable="rviz2",
+            name="rviz2",
+            output="log",
+            arguments=["-d", rviz_config],
+            condition=IfCondition(LaunchConfiguration("use_rviz")),
         ),
     ])
